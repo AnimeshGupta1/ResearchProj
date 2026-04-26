@@ -50,7 +50,7 @@ email
 
 
 \begin{abstract}
-Link prediction is a fundamental task in graphs, where the goal is to predict missing links between nodes. Most existing approaches rely on node embeddings learned by graph neural networks and use simple decoders for link prediction, often overlooking global structural information such as the shortest-path distance between nodes. In this work, we propose a distance-augmented link prediction framework that incorporates shortest-path distance into link prediction. We encode distances using sinusoidal embeddings and use them to condition the decoder through adaptive layer normalization, allowing the model to adjust node representations based on structural proximity. Our experiments on the CORA dataset demonstrates that incorporating distance information leads to improved link prediction performance.
+Link prediction is a fundamental task in graphs, where the goal is to predict missing links between nodes. Most existing approaches rely on node embeddings learned by graph neural networks and use simple decoders for link prediction, often overlooking global structural information such as the shortest-path distance between nodes. In this work, we propose a distance-augmented link prediction framework that incorporates shortest-path distance into link prediction. We use distance embedding as the input for adaptive layer normalization, allowing the model to adjust node representations based on structural proximity. Our experiments on the CORA and CiteSeer dataset demonstrates that incorporating distance information leads to improved link prediction performance.
 \end{abstract}
 \vspace{0.5em}
 \begin{IEEEkeywords}
@@ -67,7 +67,7 @@ While significant effort has been devoted to designing more expressive encoders,
 One such signal is the shortest-path distance between nodes. Nodes that are closer in the graph are usually more likely to be connected than those that are far apart. However, this information is not incorporated in most standard link prediction models, as message passing in GNNs primarily captures local neighborhood information.
 \vspace{0.5em}
 
-In this paper, we propose a distance-augmented link prediction framework that  incorporates shortest-path distance into the decoding process. We first compute node embeddings using a GCN encoder \cite{kipf2017semi}. We then encode the shortest-path distance between node pairs using sinusoidal frequency embeddings, which provide a smooth and expressive representation of distance. These embeddings are used to condition a decoder through AdaLN-Zero \cite{peebles2023dit}, enabling the model to modulate node representations based on structural distance before predicting links.
+In this paper, we propose a distance-augmented link prediction framework that incorporates shortest-path distance into the decoding process. We pass the embedding of shortest path distance between the two nodes of the link whose probability of existence is to be computed as input to AdaLN-Zero \cite{peebles2023dit}, enabling the model to decide the extent to which the distance embedding is used in link prediction.
 
 \vspace{0.5em}
 
@@ -90,13 +90,13 @@ Traditional link prediction methods include heuristic approaches such as Common 
 While these methods are effective, they typically rely only on node embeddings and do not explicitly incorporate global structural information such as shortest-path distance. As a result, they may fail to capture important structural patterns that influence link formation.
 
 
-\subsection{Adaptive Normalization and Feature Modulation}
+\subsection{Adaptive Layer Normalization based Conditioning}
 
 Adaptive Layer Normalization-Zero (AdaLN-Zero) was first introduced in the "Scalable Diffusion Models with Transformers" \cite{peebles2023dit} paper as a means to incorporate information from heterogeneous embeddings (timestep and class embeddings). Precursors of AdaLN-Zero have also been used in deep learning to combine multimodal contextual information \cite{perez2018film}. In these methods, embeddings containing external context are used to generate shift and scale parameters that modulate feature representations. This allows the model to adapt its behavior based on contextual information.
 
 \vspace{0.5em}
 
-In this work, we apply a variant of AdaLN-Zero in the context of link prediction, where shortest-path distance is used as a conditioning signal to modulate node embeddings before decoding. This allows the decoder to adapt its predictions based on the structural relationship between nodes.
+In this work, we apply a variant of AdaLN-Zero in the context of link prediction, where shortest-path distance is used as a conditioning signal to modulate node features before decoding. This allows the decoder to adapt its predictions based on the structural relationship between nodes.
 
 \section{Method}
 
@@ -109,22 +109,22 @@ In this work, we apply a variant of AdaLN-Zero in the context of link prediction
 
 \subsection{Problem Setup}
 
-Let $G = (V, E)$ be a graph, where $V$ is the set of nodes and $E$ is the set of observed edges. Each node $v \in V$ is associated with a feature vector $x_v$. The goal of link prediction is to learn a function that predicts whether an edge exists between a pair of nodes $(u, v)$.
+Let $G = (V, E)$ be a graph, where $V$ is the set of nodes and $E$ is the set of observed edges. Each node $v \in V$ is associated with a feature vector $x_v$ \in X$. The goal of link prediction is to learn a function that predicts whether an edge exists between a pair of nodes $(u, v)$.
 
 \vspace{0.5em}
 
 We follow the standard encoder–decoder framework for link prediction. An encoder $f(\cdot)$ maps each node to a low-dimensional embedding:
 \begin{equation}
-    z_v = f(x_v, G)
+    z_v = f(x_v, G, X)
 \end{equation}
 
 where $z_v \in \mathbb{R}^d$ is the embedding of node $v$ containing structural information.
 
 \vspace{0.5em}
 
-A decoder $g(\cdot)$ then takes a pair of node embeddings and outputs a score representing the likelihood of an edge:
+A decoder $g(\cdot)$ then takes a pair of node embeddings and some additional context vector $c$, and outputs a score representing the likelihood of an edge:
 \begin{equation}
-\hat{y}_{uv} = g(z_u, z_v)
+\hat{y}_{uv} = g(z_u, z_v, c)
 \end{equation}
 
 \vspace{0.5em}
@@ -134,7 +134,7 @@ The model is trained to assign high scores to observed edges and low scores to n
 
 \subsection{Node Embedding Encoder}
 
-To compute node embeddings, we use a Graph Convolutional Network (GCN) \cite{kipf2017semi} encoder, which aggregates feature information from local neighborhoods using a normalized adjacency structure. The GCN updates node representations through layer-wise propagation followed by learnable transformations.
+To compute node embeddings, we use a Graph Convolutional Network (GCN) \cite{kipf2017gcn} encoder, which aggregates feature information from local neighborhoods using a normalized adjacency structure. The GCN updates node representations through layer-wise propagation followed by learnable transformations.
 
 \vspace{0.5em}
 
@@ -165,7 +165,7 @@ z_v = Z_v
 
 \subsection{Shortest-Path Distance}
 
-In addition to node embeddings, we incorporate structural information in the form of shortest-path distance between node pairs. For a pair of nodes $(u, v)$, we compute the raw shortest-path distance $d_{raw}(u, v)$ in the graph. However, passing the raw distance poses problem causing the model to overfit.
+In addition to node embeddings, we incorporate structural information in the form of shortest-path distance between node pairs. For a pair of nodes $(u, v)$, we compute the raw shortest-path distance $d_{raw}(u, v)$ in the graph. However, passing the raw distance poses the problem of overfitting.
 
 \vspace{0.5em}
 
@@ -173,7 +173,7 @@ Since very large distances are less informative for link prediction, we clamp th
 
 \vspace{0.5em}
 
-We also found that passing the distance embedding signal when d = 1 in its raw form caused overfitting because it implies there is an edge with probability one. Hence, we clamped the minimum distance to $D_{min}$. Hence, the distance used in our work is defined in eq. 1.
+We also found that passing the distance embedding signal when d = 1 in its raw form caused overfitting because it implies there is an edge with probability one. We clamped the minimum distance to $D_{min}$. Hence, the distance used in our work is defined in eq. 7.
 
 
 \begin{equation}
@@ -206,7 +206,7 @@ where the frequencies $\omega_i$ are defined as:
 
 The sinusoidal embedding is then passed through a multilayer perceptron (MLP) to obtain the final distance embedding:
 \begin{equation}
-d_{emb} = \text{MLP}(\text{SE}(d)) \hspace{3em} (3)
+d_{emb} = \text{MLP}(\text{SE}(d)) \hspace{3em} 
 \end{equation}
 
 \subsection{Distance-Aware Decoders}
@@ -223,12 +223,21 @@ As a baseline, we use a standard multilayer perceptron (MLP) decoder that predic
 
 \vspace{0.5em}
 
-Given embeddings $z_u$ and $z_v$ for nodes $u$ and $v$, we concatenate them and pass them through an MLP:
+Given embeddings $z_u$ and $z_v$ for nodes $u$ and $v$, we concatenate their hadamard product h and the absolute difference of features diff and pass the resulting vector into the MLP layers:
 \begin{equation}
-h_{uv} = [z_u \, || \, z_v]
+\mathbf{h}_{uv} = \mathbf{z}_u \odot \mathbf{z}_v
 \end{equation}
+
 \begin{equation}
-\hat{y}_{uv} = \text{MLP}(h_{uv})
+\mathbf{diff}_{uv} = \left| \mathbf{z}_u - \mathbf{z}_v \right|
+\end{equation}
+
+\begin{equation}
+\mathbf{x}_{uv} = \left[ \mathbf{h}_{uv} \, \| \, \mathbf{diff}_{uv} \right]
+\end{equation}
+
+\begin{equation}
+\mathbf{\hat y}_{uv} = \mathrm{MLP}(\mathbf{x}_{uv})
 \end{equation}
 
 \vspace{0.5em}
@@ -244,12 +253,12 @@ To incorporate structural information, we extend the baseline decoder by includi
 
 \vspace{0.5em}
 
-Given the distance $d(u, v)$ between nodes, we concatenate it with the node embeddings:
+Given the distance $d(u, v)$ between nodes, we concatenate it with the node embedding features:
 \begin{equation}
-h_{uv} = [z_u \, || \, z_v \, || \, d(u, v)]
+\hat x_{uv} = [x_{uv}\, || \, d(u, v)]
 \end{equation}
 \begin{equation}
-\hat{y}_{uv} = \text{MLP}(h_{uv})
+\hat{y}_{uv} = \text{MLP}(\hat x_{uv})
 \end{equation}
 
 \vspace{0.5em}
@@ -258,19 +267,19 @@ This approach allows the model to directly use distance information for link pre
 
 \subsubsection{Distance Embedding Concatenated Decoder}
 
-To increase the strength of the distance signal, we first convert the node distance into a high dimensional embedding as described by eq. 2 and eq. 3.
+To increase the strength of the distance signal, we first convert the node distance into a high dimensional embedding as described by eq. 8 and eq. 9.
 
 
 \vspace{0.5em}
 
-This embedding is then concatenated with the node embeddings to generate the input feature vector to the MLP
+This embedding is then concatenated with the node embedding features to generate the input feature vector to the MLP
 \vspace{0.5em}
 
 \begin{equation}
-h_{uv} = [z'_u \, || \, z'_v || \, d_{emb}]
+\hat x_{uv} = [x_{uv} || \, d_{emb}]
 \end{equation}
 \begin{equation}
-\hat{y}_{uv} = \text{MLP}(h_{uv})
+\hat{y}_{uv} = \text{MLP}(\hat x_{uv})
 \end{equation}
 
 \vspace{0.5em}
@@ -281,11 +290,11 @@ This design has more signal strength of the shortest path distance but is too si
 
 \subsubsection{AdaLN-Zero Distance-Conditioned Decoder}
 
-We propose a distance-conditioned decoder that uses shortest-path distance to modulate node embeddings before predicting links.
+We propose a distance-conditioned decoder that uses shortest-path distance to modulate node embedding features before predicting links.
 
 \vspace{0.5em}
 
-First, the shortest-path distance $d(u, v)$ is transformed into a high-dimensional representation using the distance encoder as in eq. 3.
+First, the shortest-path distance $d(u, v)$ is transformed into a high-dimensional representation using the distance encoder as in eq. 10.
 
 \vspace{0.5em}
 
@@ -299,22 +308,22 @@ This embedding is then used to generate modulation parameters, namely shift and 
 The parameters of the final layer of the MLP used to calculate the modulation parameters are initialized to zero such that the AdaLN-Zero conditioning starts as a simple LayerNorm during training. As illustrated in Fig.~\ref{fig:method}, these parameters are used to transform the node embeddings using AdaLN-Zero conditioning.
 
 \begin{equation}
-z'_u = LN(z_u) \cdot (1 + \text{scale}) + \text{shift}
+h'_{uv} = LN(h_{uv}) \cdot (1 + \text{scale}) + \text{shift}
 \end{equation}
 \begin{equation}
-z'_v = LN(z_v) \cdot (1 + \text{scale}) + \text{shift}
+diff'_{uv} = LN(diff_{uv}) \cdot (1 + \text{scale}) + \text{shift}
 \end{equation}
 
 (where LN stands for Layer-Norm)
 
 \vspace{0.5em}
 
-The modulated embeddings are then concatenated and passed through a decoder:
+The modulated feature vectors are then concatenated and passed through a decoder:
 \begin{equation}
-h_{uv} = [z'_u \, || \, z'_v]
+\hat x_{uv} = [h'_{uv} \, || \, diff'_{uv}]
 \end{equation}
 \begin{equation}
-\hat{y}_{uv} = \text{MLP}(h_{uv})
+\hat{y}_{uv} = \text{MLP}(\hat x_{uv})
 \end{equation}
 
 \vspace{0.5em}
@@ -329,12 +338,12 @@ The model is trained as a binary classification task to distinguish between exis
 
 We have both positive (edge exists between the given nodes) and negative (no edge) samples in the training and test set. We use the binary cross-entropy loss with logits to train the model:
 \begin{equation}
-\mathcal{L} = - \frac{1}{N} \sum_{i=1}^{N} \left[ y_i \log \sigma(s_i) + (1 - y_i) \log (1 - \sigma(s_i)) \right]
+\mathcal{L} = - \frac{1}{N} \sum_{i=1}^{N} \left[ n y_i \log \sigma(s_i) + (1 - y_i) \log (1 - \sigma(s_i)) \right]
 \end{equation}
 
 \vspace{0.5em}
 
-where $s_i$ is the predicted score for an edge, $y_i \in \{0,1\}$ is the ground truth label indicating whether the edge exists, and $\sigma(\cdot)$ is the sigmoid function.
+where $s_i$ is the predicted score for an edge, $y_i \in \{0,1\}$ is the ground truth label indicating whether the edge exists, $\sigma(\cdot)$ is the sigmoid function and $n$ is a chosen hyperparameter specifying the ratio of negative to positive edges in the training set.
 
 \vspace{0.5em}
 
@@ -353,7 +362,7 @@ The Cora dataset contains 2708 nodes, 10556 edges, and 1433-dimensional node fea
 
 \subsection{Edge Split and Negative Sampling}
 
-We use a standard edge split where observed edges are divided into training and test sets. For training, we sample negative edges that do not exist in the graph using random negative sampling. The number of negative edges is chosen to be equal to the number of positive edges.
+The set of observed edges are divided into training and test sets. For training, we sample negative edges that do not exist in the graph using random negative sampling. The number of negative edges is chosen to be equal to the number of positive edges for the test set. However, for the train set we sample n times more negative edges than the no. of positive edges in the train set. We also multiply the loss of positive edges by n to balance the model's training objective while keeping a large train set.
 
 \vspace{0.5em}
 
@@ -361,7 +370,7 @@ During evaluation, we compute predictions for both positive and negative test ed
 
 \subsection{Implementation Details}
 
-The encoder is implemented using a three-layer Graph Convolutional Network (GCN) \cite{kipf2017semi} with hidden dimension 128 and output embedding dimension 64. Each intermediate layer is followed by a ReLU activation and dropout with a rate of 0.6 to improve generalization.
+The encoder is implemented using a three-layer Graph Convolutional Network (GCN) \cite{kipf2017gcn} with hidden dimension 64 and output embedding dimension 32. Each intermediate layer is followed by a ReLU activation and dropout with a rate of 0.6 to improve generalization.
 
 \vspace{0.5em}
 
@@ -373,7 +382,7 @@ The distance embedding module maps shortest-path distances into vector represent
 
 \vspace{0.5em}
 
-The model is trained using the Adam optimizer with a learning rate of 0.01 for 400 epochs. A regularization term is added to penalize large modulation parameters, encouraging the model to stay close to the base MLP behavior during early training.
+The model is trained using the Adam optimizer. To prevent overfitting, a regularization term is added to penalize large modulation parameters along with weight decay.
 
 
 \section{Results}
@@ -413,47 +422,40 @@ The results show that incorporating shortest-path distance significantly improve
 
 \section{Discussion}
 
-To understand the contribution of different components of our model, We analyzed different models to understand how each one impacts link prediction performance.
+To understand the contribution of different components of our model, we analyzed different models to understand how each method of incorporating distance impacts link prediction performance.
+
+
+% \begin{table*}[htbp]
+% \caption{Effect of Distance Information on Link Prediction (Citeseer)}
+% \centering
+% \begin{tabular}{|c|c|c|}
+% \hline
+% \textbf{Model Variant} & \textbf{AUC} & \textbf{AP} \\
+% \hline
+% MLP Decoder (No Distance) 
+% & $0.9113 \pm 0.0065$ & $0.9181 \pm 0.0064$ \\
+% \hline
+% + Distance (Concatenation) 
+% & $0.9200 \pm 0.0033$ & $0.9255 \pm 0.0028$ \\
+% \hline
+% + Distance (Adaptive Modulation - AdaLN) 
+% & $\textbf{0.9275} \pm 0.0051$ & $\textbf{0.9336} \pm 0.0042$ \\
+% \hline
+% \end{tabular}
+% \label{tab:ablation_citeseer}
+% \end{table*}
+
+% \vspace{0.5em}
 
 \vspace{0.5em}
 
-\subsection{Effect of Distance Information}
-
-We first evaluate how shortest-path distance affects link prediction (Table~\ref{tab:ablation_citeseer}). We compare three settings: (1) a baseline MLP decoder without distance information, (2) a decoder that concatenates raw shortest-path distance, and (3) a decoder that uses distance embeddings.
-
-\vspace{0.5em}
-
-\begin{table*}[htbp]
-\caption{Effect of Distance Information on Link Prediction (Citeseer)}
-\centering
-\begin{tabular}{|c|c|c|}
-\hline
-\textbf{Model Variant} & \textbf{AUC} & \textbf{AP} \\
-\hline
-MLP Decoder (No Distance) 
-& $0.9113 \pm 0.0065$ & $0.9181 \pm 0.0064$ \\
-\hline
-+ Distance (Concatenation) 
-& $0.9200 \pm 0.0033$ & $0.9255 \pm 0.0028$ \\
-\hline
-+ Distance (Adaptive Modulation - AdaLN) 
-& $\textbf{0.9275} \pm 0.0051$ & $\textbf{0.9336} \pm 0.0042$ \\
-\hline
-\end{tabular}
-\label{tab:ablation_citeseer}
-\end{table*}
-
-\vspace{0.5em}
-
-\vspace{0.5em}
-
-The results show that incorporating shortest-path distance significantly improves performance compared to using node embeddings alone. Furthermore, representing distance using embeddings performs slightly better than using raw distance values, indicating that high-dimensional distance representations are more expressive.
+The results show that incorporating shortest-path distance significantly improves performance compared to using node embeddings alone.
 
 \vspace{0.5em}
 
 \subsection{Effect of Distance Modulation}
 
-We next evaluate the impact of distance-conditioned modulation. Instead of directly concatenating distance embeddings with node embeddings, the AdaLN decoder uses distance embeddings to modulate node representations through learned shift and scale parameters.
+We evaluate the impact of distance-conditioned modulation. Instead of directly concatenating distance embeddings with node embeddings, the AdaLN decoder uses distance embeddings to modulate node representations through learned shift and scale parameters.
 
 \vspace{0.5em}
 
@@ -468,17 +470,18 @@ Since very large shortest-path distances may not provide useful information for 
 \vspace{0.5em}
 
 \begin{table}[htbp]
-\caption{Effect of Maximum Distance Threshold $D_{max}$ on Citeseer}
+\caption{Effect of Maximum Distance Threshold $D_{max}$ on 
+GraphAdaLN Decoder trained on Citeseer}
 \centering
 \begin{tabular}{|c|c|c|}
 \hline
 \textbf{$D_{max}$} & \textbf{AUC} & \textbf{AP} \\
 \hline
-10  & $0.8500 \pm 0.0045$ & $0.8550 \pm 0.0040$ \\
+10  & $0.9267 \pm 0.0051$ & $0.9330 \pm 0.0039$ \\
 \hline
-20  & $\textbf{0.8800} \pm 0.0038$ & $\textbf{0.8850} \pm 0.0035$ \\
+20  & $\textbf{0.9275} \pm 0.0051$ & $\textbf{0.9336} \pm 0.0042$ \\
 \hline
-50  & $0.8300 \pm 0.0050$ & $0.8350 \pm 0.0046$ \\
+1000  & $0.9255 \pm 0.0050$ & $0.9321 \pm 0.0038$ \\
 \hline
 \end{tabular}
 \label{tab:dmax}
@@ -568,7 +571,7 @@ T. N. Kipf and M. Welling,
 
 \bibitem{wang2021benchmark}
 X. Wang, Y. Zhang, and W. Zhu,
-``A Benchmarking Study of Link Prediction in Graph Neural Networks,''
+``Benchmarking Graph Neural Networks on Link Prediction,''
 \textit{arXiv preprint arXiv:2102.12557}, 2021.
 
 \vspace{0.5em}
@@ -616,11 +619,6 @@ E. Perez, F. Strub, H. de Vries, V. Dumoulin, and A. Courville,
 ``FiLM: Visual Reasoning with a General Conditioning Layer,''
 in \textit{Proceedings of the AAAI Conference on Artificial Intelligence (AAAI)},
 vol. 32, no. 1, 2018.
-\bibitem{kipf2017semi}
-T. N. Kipf and M. Welling,
-``Semi-Supervised Classification with Graph Convolutional Networks,''
-in \textit{Proceedings of the International Conference on Learning Representations (ICLR)},
-2017.
 \end{thebibliography}
 \vspace{12pt}
 
